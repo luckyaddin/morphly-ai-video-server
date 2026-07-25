@@ -17,4 +17,4 @@ RUN cd ltx && uv pip install --system -e .
 # Install RunPod
 RUN pip install runpod~=1.7.9
 
-CMD ["python", "-u", "handler.py"]
+CMD ["bash", "-lc", "echo 'Starting Morphly worker'; python --version; which python; ls -la /app; python -u handler.py"]
