@@ -126,6 +126,10 @@ def handler(job: dict[str, Any]) -> dict[str, Any]:
         if action == "health":
             return engine.health_check()
 
+        # Load models only when an actual generation request arrives.
+        if not engine.is_loaded:
+            load_engine()
+
         prompt = str(job_input.get("prompt", "")).strip()
         if not prompt:
             raise ValueError("prompt is required.")
@@ -241,7 +245,5 @@ def handler(job: dict[str, Any]) -> dict[str, Any]:
             "traceback": traceback.format_exc(),
         }
 
-
-load_engine()
 
 runpod.serverless.start({"handler": handler})
