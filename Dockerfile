@@ -12,11 +12,11 @@ RUN python -m pip install --upgrade pip
 RUN pip install uv
 
 # Install PyTorch with CUDA 12.4
-RUN pip install \
+RUN pip install --no-cache-dir \
     torch==2.7.1 \
     torchvision==0.22.1 \
     torchaudio==2.7.1 \
-    --index-url https://download.pytorch.org/whl/cu124
+    --index-url https://download.pytorch.org/whl/cu126
 
 # Install the application dependencies together
 RUN pip install --no-cache-dir -r requirements.txt
