@@ -1,4 +1,4 @@
-FROM runpod/base:0.6.3-cuda12.8.0
+FROM runpod/base:0.7.0-ubuntu2004-cuda1241
 
 # Python 3.11
 RUN ln -sf $(which python3.11) /usr/local/bin/python && \
