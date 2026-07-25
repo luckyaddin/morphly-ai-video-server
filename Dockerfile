@@ -10,7 +10,8 @@ COPY . .
 
 RUN python -m pip install --upgrade pip
 RUN pip install uv
-
+RUN pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 \
+    --index-url https://download.pytorch.org/whl/cu124
 # Install the whole LTX workspace
 RUN cd ltx && uv pip install --system -e .
 
