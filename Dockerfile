@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Install the LTX packages
 RUN cd /app/ltx && \
-    uv pip install --system \
+    uv pip install --system --no-deps \
       -e packages/ltx-core \
       -e packages/ltx-pipelines
 
