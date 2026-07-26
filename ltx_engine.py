@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from generation_timing import GenerationTiming
+
 
 # Add LTX packages to sys.path.
 LTX_ROOT = os.path.join(
@@ -305,8 +307,7 @@ class LTXEngine:
         negative_prompt: str,
         width: int,
         height: int,
-        fps: float,
-        frames: int,
+        timing: GenerationTiming,
         seed: int,
         guidance_scale: float,
         inference_steps: int,
@@ -331,7 +332,7 @@ class LTXEngine:
 
                 tiling_config = TilingConfig.default()
                 video_chunks_number = get_video_chunks_number(
-                    frames,
+                    timing.frames,
                     tiling_config,
                 )
 
@@ -341,8 +342,8 @@ class LTXEngine:
                     seed=seed,
                     height=height,
                     width=width,
-                    num_frames=frames,
-                    frame_rate=fps,
+                    num_frames=timing.frames,
+                    frame_rate=timing.pipeline_fps,
                     num_inference_steps=inference_steps,
                     video_guider_params=MultiModalGuiderParams(
                         cfg_scale=guidance_scale
@@ -356,7 +357,7 @@ class LTXEngine:
 
                 encode_video(
                     video=video,
-                    fps=int(fps),
+                    fps=timing.export_fps,
                     audio=audio,
                     output_path=output_path,
                     video_chunks_number=video_chunks_number,
@@ -371,8 +372,8 @@ class LTXEngine:
                 return {
                     "success": True,
                     "output_path": output_path,
-                    "fps": fps,
-                    "frames": frames,
+                    "fps": timing.fps,
+                    "frames": timing.frames,
                     "width": width,
                     "height": height,
                     "seed": seed,
@@ -397,8 +398,7 @@ class LTXEngine:
         negative_prompt: str,
         width: int,
         height: int,
-        fps: float,
-        frames: int,
+        timing: GenerationTiming,
         seed: int,
         guidance_scale: float,
         inference_steps: int,
@@ -429,7 +429,7 @@ class LTXEngine:
 
                 tiling_config = TilingConfig.default()
                 video_chunks_number = get_video_chunks_number(
-                    frames,
+                    timing.frames,
                     tiling_config,
                 )
 
@@ -447,8 +447,8 @@ class LTXEngine:
                     seed=seed,
                     height=height,
                     width=width,
-                    num_frames=frames,
-                    frame_rate=fps,
+                    num_frames=timing.frames,
+                    frame_rate=timing.pipeline_fps,
                     num_inference_steps=inference_steps,
                     video_guider_params=MultiModalGuiderParams(
                         cfg_scale=guidance_scale
@@ -462,7 +462,7 @@ class LTXEngine:
 
                 encode_video(
                     video=video,
-                    fps=int(fps),
+                    fps=timing.export_fps,
                     audio=audio,
                     output_path=output_path,
                     video_chunks_number=video_chunks_number,
@@ -477,8 +477,8 @@ class LTXEngine:
                 return {
                     "success": True,
                     "output_path": output_path,
-                    "fps": fps,
-                    "frames": frames,
+                    "fps": timing.fps,
+                    "frames": timing.frames,
                     "width": width,
                     "height": height,
                     "seed": seed,
@@ -502,8 +502,7 @@ class LTXEngine:
         prompt: str,
         width: int,
         height: int,
-        fps: float,
-        frames: int,
+        timing: GenerationTiming,
         seed: int,
         output_path: str,
     ) -> Dict[str, Any]:
@@ -533,7 +532,7 @@ class LTXEngine:
 
                 tiling_config = TilingConfig.default()
                 video_chunks_number = get_video_chunks_number(
-                    frames,
+                    timing.frames,
                     tiling_config,
                 )
 
@@ -546,8 +545,8 @@ class LTXEngine:
                     seed=seed,
                     height=height,
                     width=width,
-                    num_frames=frames,
-                    frame_rate=fps,
+                    num_frames=timing.frames,
+                    frame_rate=timing.pipeline_fps,
                     images=[],
                     video_conditioning=video_conditioning,
                     tiling_config=tiling_config,
@@ -555,7 +554,7 @@ class LTXEngine:
 
                 encode_video(
                     video=video,
-                    fps=int(fps),
+                    fps=timing.export_fps,
                     audio=audio,
                     output_path=output_path,
                     video_chunks_number=video_chunks_number,
@@ -570,8 +569,8 @@ class LTXEngine:
                 return {
                     "success": True,
                     "output_path": output_path,
-                    "fps": fps,
-                    "frames": frames,
+                    "fps": timing.fps,
+                    "frames": timing.frames,
                     "width": width,
                     "height": height,
                     "seed": seed,
