@@ -4,6 +4,26 @@
 
 This repository serves as a starting point for creating your own custom RunPod Serverless worker. It provides a basic structure and configuration that you can build upon.
 
+## Morphly generation timing contract
+
+Every generation request must provide `requested_duration_seconds`, `frames`,
+and `fps`. The worker validates the LTX `8n + 1` frame requirement using:
+
+```text
+frames = ceil(((requested_duration_seconds * fps) - 1) / 8) * 8 + 1
+```
+
+The same validated FPS is passed to the LTX pipeline and the MP4 encoder. After
+encoding, the worker measures the real MP4 duration with PyAV and returns:
+
+- `requested_duration_seconds`
+- `actual_duration_seconds`
+- `frames`
+- `fps`
+
+Jobs with missing or inconsistent timing fields are rejected instead of using
+a fixed frame-count or FPS fallback.
+
 ---
 
 [![RunPod](https://api.runpod.io/badge/runpod-workers/worker-template)](https://www.runpod.io/console/hub/runpod-workers/worker-template)

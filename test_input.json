@@ -1,5 +1,16 @@
 {
   "input": {
-    "name": "John Doe"
+    "mode": "text_to_video",
+    "prompt": "A cinematic tracking shot through a rain-soaked city.",
+    "negative_prompt": "",
+    "width": 768,
+    "height": 432,
+    "requested_duration_seconds": 8,
+    "frames": 65,
+    "fps": 8,
+    "seed": 42,
+    "guidance_scale": 3,
+    "inference_steps": 8,
+    "job_id": "local-duration-test"
   }
 }

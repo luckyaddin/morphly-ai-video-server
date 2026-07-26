@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import traceback
@@ -8,6 +9,11 @@ import runpod
 from supabase import Client, create_client
 
 from ltx_engine import LTXEngine
+from generation_timing import (
+    build_generation_timing,
+    duration_differs_from_request,
+    probe_video_duration,
+)
 
 
 MODEL_ROOT = Path(
@@ -90,6 +96,7 @@ SIGNED_URL_EXPIRES_IN = int(
 
 engine = LTXEngine()
 _supabase_client: Optional[Client] = None
+logger = logging.getLogger("morphly_worker")
 
 
 def _require_file(
@@ -318,6 +325,45 @@ def _validated_float(
     return value
 
 
+def _required_integer(
+    data: dict[str, Any],
+    key: str,
+    minimum: int,
+    maximum: int,
+) -> int:
+    if key not in data or data[key] is None:
+        raise ValueError(
+            f"{key} is required."
+        )
+
+    value = data[key]
+
+    if isinstance(value, bool):
+        raise ValueError(
+            f"{key} must be an integer."
+        )
+
+    try:
+        integer = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{key} must be an integer."
+        ) from exc
+
+    if float(value) != integer:
+        raise ValueError(
+            f"{key} must be an integer."
+        )
+
+    if integer < minimum or integer > maximum:
+        raise ValueError(
+            f"{key} must be between "
+            f"{minimum} and {maximum}."
+        )
+
+    return integer
+
+
 def handler(
     job: dict[str, Any],
 ) -> dict[str, Any]:
@@ -328,14 +374,14 @@ def handler(
     output_path: Optional[str] = None
 
     try:
-        action = str(
+        mode = str(
             job_input.get(
-                "action",
-                "text_to_video",
+                "mode",
+                "",
             )
-        )
+        ).strip()
 
-        if action == "health":
+        if mode == "health":
             health = engine.health_check()
 
             health["supabase_configured"] = bool(
@@ -349,6 +395,16 @@ def handler(
             )
 
             return health
+
+        if mode not in {
+            "text_to_video",
+            "image_to_video",
+            "video_to_video",
+        }:
+            raise ValueError(
+                "mode must be text_to_video, "
+                "image_to_video, or video_to_video."
+            )
 
         if not engine.is_loaded:
             load_engine()
@@ -391,25 +447,35 @@ def handler(
                 "height must be divisible by 64."
             )
 
-        frames = _validated_integer(
-            job_input,
-            "frames",
-            97,
-            9,
-            257,
+        requested_duration_seconds = (
+            _required_integer(
+                job_input,
+                "requested_duration_seconds",
+                1,
+                60,
+            )
         )
 
-        if (frames - 1) % 8 != 0:
-            raise ValueError(
-                "frames must follow the format 8n + 1."
-            )
+        frames = _required_integer(
+            job_input,
+            "frames",
+            9,
+            1201,
+        )
 
-        fps = _validated_float(
+        fps = _required_integer(
             job_input,
             "fps",
-            24.0,
-            1.0,
-            60.0,
+            1,
+            60,
+        )
+
+        timing = build_generation_timing(
+            requested_duration_seconds=(
+                requested_duration_seconds
+            ),
+            frames=frames,
+            fps=fps,
         )
 
         seed = _validated_integer(
@@ -454,9 +520,12 @@ def handler(
         )
 
         job_id = str(
-            job.get(
-                "id",
-                "local-job",
+            job_input.get(
+                "job_id",
+                job.get(
+                    "id",
+                    "local-job",
+                ),
             )
         )
 
@@ -465,7 +534,7 @@ def handler(
             / f"{job_id}.mp4"
         )
 
-        if action == "text_to_video":
+        if mode == "text_to_video":
             result = (
                 engine.generate_text_to_video(
                     prompt=prompt,
@@ -474,8 +543,7 @@ def handler(
                     ),
                     width=width,
                     height=height,
-                    fps=fps,
-                    frames=frames,
+                    timing=timing,
                     seed=seed,
                     guidance_scale=(
                         guidance_scale
@@ -487,7 +555,7 @@ def handler(
                 )
             )
 
-        elif action == "image_to_video":
+        elif mode == "image_to_video":
             image_path = str(
                 job_input.get(
                     "image_path",
@@ -509,8 +577,7 @@ def handler(
                     ),
                     width=width,
                     height=height,
-                    fps=fps,
-                    frames=frames,
+                    timing=timing,
                     seed=seed,
                     guidance_scale=(
                         guidance_scale
@@ -522,7 +589,7 @@ def handler(
                 )
             )
 
-        elif action == "video_to_video":
+        elif mode == "video_to_video":
             video_path = str(
                 job_input.get(
                     "video_path",
@@ -541,8 +608,7 @@ def handler(
                     prompt=prompt,
                     width=width,
                     height=height,
-                    fps=fps,
-                    frames=frames,
+                    timing=timing,
                     seed=seed,
                     output_path=output_path,
                 )
@@ -550,13 +616,41 @@ def handler(
 
         else:
             raise ValueError(
-                f"Unsupported action: {action}"
+                f"Unsupported mode: {mode}"
             )
 
         if not Path(output_path).is_file():
             raise RuntimeError(
                 "Generation finished without "
                 "creating an MP4."
+            )
+
+        actual_duration_seconds = (
+            probe_video_duration(
+                output_path,
+            )
+        )
+
+        duration_mismatch = (
+            duration_differs_from_request(
+                requested_duration_seconds=(
+                    timing.requested_duration_seconds
+                ),
+                actual_duration_seconds=(
+                    actual_duration_seconds
+                ),
+            )
+        )
+
+        if duration_mismatch:
+            logger.warning(
+                "Generated MP4 duration mismatch for %s: "
+                "requested=%ss actual=%.3fs frames=%s fps=%s",
+                job_id,
+                timing.requested_duration_seconds,
+                actual_duration_seconds,
+                timing.frames,
+                timing.fps,
             )
 
         upload_result = _upload_video(
@@ -571,6 +665,16 @@ def handler(
 
         result.update(
             upload_result
+        )
+
+        result.update(
+            timing.output_metadata(
+                actual_duration_seconds
+            )
+        )
+
+        result["duration_mismatch"] = (
+            duration_mismatch
         )
 
         return result
