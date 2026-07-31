@@ -568,6 +568,39 @@ def handler(
                     "image_path is required."
                 )
 
+            additional_image_paths_raw = (
+                job_input.get(
+                    "additional_image_paths",
+                    [],
+                )
+            )
+            if additional_image_paths_raw is None:
+                additional_image_paths_raw = []
+            if not isinstance(
+                additional_image_paths_raw,
+                list,
+            ):
+                raise ValueError(
+                    "additional_image_paths must be an array."
+                )
+            additional_image_paths = [
+                str(path).strip()
+                for path in additional_image_paths_raw
+                if str(path).strip()
+            ]
+            if len(additional_image_paths) > 3:
+                raise ValueError(
+                    "A maximum of 3 additional reference "
+                    "images is currently supported."
+                )
+            anchor_strength = _validated_float(
+                job_input,
+                "anchor_strength",
+                1.0,
+                0.1,
+                1.0,
+            )
+
             result = (
                 engine.generate_image_to_video(
                     image_path=image_path,
@@ -586,6 +619,10 @@ def handler(
                         inference_steps
                     ),
                     output_path=output_path,
+                    additional_image_paths=(
+                        additional_image_paths
+                    ),
+                    anchor_strength=anchor_strength,
                 )
             )
 

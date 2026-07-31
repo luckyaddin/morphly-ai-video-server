@@ -10,7 +10,7 @@ os.environ.setdefault(
 import sys
 import logging
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 import torch
 
@@ -390,6 +390,59 @@ class LTXEngine:
                     f"Generation failed: {exc}"
                 ) from exc
 
+    @staticmethod
+    def _build_image_conditioning(
+        image_path: str,
+        timing: GenerationTiming,
+        additional_image_paths: Optional[Sequence[str]] = None,
+        anchor_strength: float = 1.0,
+    ) -> list[ImageConditioningInput]:
+        if not os.path.isfile(image_path):
+            raise FileNotFoundError(
+                f"Primary reference image not found: {image_path}"
+            )
+        images = [
+            ImageConditioningInput(
+                path=image_path,
+                frame_idx=0,
+                strength=anchor_strength,
+            )
+        ]
+        valid_additional_paths = []
+        for path in additional_image_paths or []:
+            normalized_path = str(path).strip()
+            if not normalized_path:
+                continue
+            if not os.path.isfile(normalized_path):
+                raise FileNotFoundError(
+                    f"Additional reference image not found: "
+                    f"{normalized_path}"
+                )
+            valid_additional_paths.append(normalized_path)
+        if valid_additional_paths:
+            usable_last_frame = max(
+                0,
+                timing.frames - 1,
+            )
+            spacing = usable_last_frame / (
+                len(valid_additional_paths) + 1
+            )
+            for index, path in enumerate(
+                valid_additional_paths,
+                start=1,
+            ):
+                frame_idx = round(
+                    spacing * index
+                )
+                images.append(
+                    ImageConditioningInput(
+                        path=path,
+                        frame_idx=frame_idx,
+                        strength=anchor_strength,
+                    )
+                )
+        return images
+
     @torch.inference_mode()
     def generate_image_to_video(
         self,
@@ -403,6 +456,10 @@ class LTXEngine:
         guidance_scale: float,
         inference_steps: int,
         output_path: str,
+        additional_image_paths: Optional[
+            Sequence[str]
+        ] = None,
+        anchor_strength: float = 1.0,
     ) -> Dict[str, Any]:
         """
         Generates a video from an image and text prompt.
@@ -433,13 +490,14 @@ class LTXEngine:
                     tiling_config,
                 )
 
-                images = [
-                    ImageConditioningInput(
-                        path=image_path,
-                        frame_idx=0,
-                        strength=1.0,
-                    )
-                ]
+                images = self._build_image_conditioning(
+                    image_path=image_path,
+                    timing=timing,
+                    additional_image_paths=(
+                        additional_image_paths
+                    ),
+                    anchor_strength=anchor_strength,
+                )
 
                 video, audio = self.ti2vid_pipeline(
                     prompt=prompt,
