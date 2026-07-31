@@ -2,6 +2,8 @@ import logging
 import os
 import tempfile
 import traceback
+import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
@@ -372,6 +374,7 @@ def handler(
     ) or {}
 
     output_path: Optional[str] = None
+    downloaded_files: list[str] = []
 
     try:
         mode = str(
@@ -534,6 +537,19 @@ def handler(
             / f"{job_id}.mp4"
         )
 
+        def _resolve_path(p: str) -> str:
+            p = p.strip()
+            if not p:
+                return p
+            if p.startswith("http://") or p.startswith("https://"):
+                local_p = output_dir / f"download_{uuid.uuid4().hex}"
+                req = urllib.request.Request(p, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=30) as response, open(local_p, "wb") as out_f:
+                    out_f.write(response.read())
+                downloaded_files.append(str(local_p))
+                return str(local_p)
+            return p
+
         if mode == "text_to_video":
             result = (
                 engine.generate_text_to_video(
@@ -567,6 +583,8 @@ def handler(
                 raise ValueError(
                     "image_path is required."
                 )
+            
+            image_path = _resolve_path(image_path)
 
             additional_image_paths_raw = (
                 job_input.get(
@@ -584,7 +602,7 @@ def handler(
                     "additional_image_paths must be an array."
                 )
             additional_image_paths = [
-                str(path).strip()
+                _resolve_path(str(path))
                 for path in additional_image_paths_raw
                 if str(path).strip()
             ]
@@ -638,6 +656,8 @@ def handler(
                 raise ValueError(
                     "video_path is required."
                 )
+            
+            video_path = _resolve_path(video_path)
 
             result = (
                 engine.generate_video_to_video(
@@ -732,6 +752,14 @@ def handler(
         if output_path:
             try:
                 Path(output_path).unlink(
+                    missing_ok=True
+                )
+            except Exception:
+                pass
+        
+        for df in downloaded_files:
+            try:
+                Path(df).unlink(
                     missing_ok=True
                 )
             except Exception:
