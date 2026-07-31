@@ -1,4 +1,7 @@
 import os
+import tempfile
+from urllib.parse import urlparse
+import requests
 
 # Must be configured before importing torch.
 # Helps reduce CUDA memory fragmentation.
@@ -98,6 +101,51 @@ class LTXEngine:
         # CPU offloading prevents the LTX model and Gemma model from
         # occupying GPU VRAM simultaneously.
         self.offload_mode = self._resolve_offload_mode()
+
+    def _resolve_input_file(self, source: str, prefix: str = "input") -> str:
+        """
+        Return a usable local file path.
+        Supports:
+        - Existing local paths
+        - HTTPS/HTTP signed URLs
+        """
+        if not source:
+            raise ValueError("Input source is empty.")
+        if source.startswith(("http://", "https://")):
+            parsed_url = urlparse(source)
+            extension = os.path.splitext(parsed_url.path)[1] or ".jpg"
+            temporary_file = tempfile.NamedTemporaryFile(
+                prefix=f"{prefix}_",
+                suffix=extension,
+                delete=False,
+            )
+            temporary_path = temporary_file.name
+            temporary_file.close()
+            try:
+                response = requests.get(
+                    source,
+                    stream=True,
+                    timeout=120,
+                )
+                response.raise_for_status()
+                with open(temporary_path, "wb") as output_file:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            output_file.write(chunk)
+                if os.path.getsize(temporary_path) == 0:
+                    raise ValueError("Downloaded input file is empty.")
+                logger.info(
+                    "Downloaded remote input to local path: %s",
+                    temporary_path,
+                )
+                return temporary_path
+            except Exception:
+                if os.path.exists(temporary_path):
+                    os.remove(temporary_path)
+                raise
+        if not os.path.isfile(source):
+            raise FileNotFoundError(f"Input file not found: {source}")
+        return source
 
     @staticmethod
     def _resolve_offload_mode() -> OffloadMode:
@@ -477,10 +525,10 @@ class LTXEngine:
                 )
 
             try:
-                if not os.path.isfile(image_path):
-                    raise FileNotFoundError(
-                        f"Input image not found: {image_path}"
-                    )
+                image_path = self._resolve_input_file(
+                    image_path,
+                    prefix="primary_image",
+                )
 
                 self._clear_cuda_cache()
 
@@ -490,12 +538,18 @@ class LTXEngine:
                     tiling_config,
                 )
 
+                resolved_additional_paths = []
+                for index, additional_path in enumerate(additional_image_paths or []):
+                    resolved_path = self._resolve_input_file(
+                        additional_path,
+                        prefix=f"reference_image_{index + 1}",
+                    )
+                    resolved_additional_paths.append(resolved_path)
+
                 images = self._build_image_conditioning(
                     image_path=image_path,
                     timing=timing,
-                    additional_image_paths=(
-                        additional_image_paths
-                    ),
+                    additional_image_paths=resolved_additional_paths,
                     anchor_strength=anchor_strength,
                 )
 

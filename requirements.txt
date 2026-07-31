@@ -12,3 +12,4 @@ pillow
 openimageio
 cloudpickle>=3.1
 supabase
+requests>=2.31.0
